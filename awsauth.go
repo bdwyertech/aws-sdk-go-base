@@ -213,20 +213,6 @@ func GetCredentialsFromSession(c *Config) (*awsCredentials.Credentials, error) {
 // validates the credentials and the ability to assume a role or will return an
 // error if unsuccessful.
 func GetCredentials(c *Config) (*awsCredentials.Credentials, error) {
-	// build a chain provider, lazy-evaluated by aws-sdk
-	providers := []awsCredentials.Provider{
-		&awsCredentials.StaticProvider{Value: awsCredentials.Value{
-			AccessKeyID:     c.AccessKey,
-			SecretAccessKey: c.SecretKey,
-			SessionToken:    c.Token,
-		}},
-		&awsCredentials.EnvProvider{},
-		&awsCredentials.SharedCredentialsProvider{
-			Filename: c.CredsFilename,
-			Profile:  c.Profile,
-		},
-	}
-
 	// Build isolated HTTP client to avoid issues with globally-shared settings
 	client := cleanhttp.DefaultClient()
 
@@ -254,10 +240,19 @@ func GetCredentials(c *Config) (*awsCredentials.Credentials, error) {
 	}
 	usedEndpoint := setOptionalEndpoint(cfg)
 
-	// Add the default AWS provider for ECS Task Roles if the relevant env variable is set
-	if uri := os.Getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"); len(uri) > 0 {
-		providers = append(providers, defaults.RemoteCredProvider(*cfg, defaults.Handlers()))
-		log.Print("[INFO] ECS container credentials detected, RemoteCredProvider added to auth chain")
+	// build a chain provider, lazy-evaluated by aws-sdk
+	providers := []awsCredentials.Provider{
+		&awsCredentials.StaticProvider{Value: awsCredentials.Value{
+			AccessKeyID:     c.AccessKey,
+			SecretAccessKey: c.SecretKey,
+			SessionToken:    c.Token,
+		}},
+		&awsCredentials.EnvProvider{},
+		&awsCredentials.SharedCredentialsProvider{
+			Filename: c.CredsFilename,
+			Profile:  c.Profile,
+		},
+		defaults.RemoteCredProvider(*cfg, defaults.Handlers()),
 	}
 
 	if !c.SkipMetadataApiCheck {
